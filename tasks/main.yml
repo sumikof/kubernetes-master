@@ -1,0 +1,128 @@
+---
+- name: install packages docker
+  yum: name={{ item }} state=present
+  with_items:
+    - kubernetes
+    - etcd
+    - flannel
+    - docker-registry
+
+- name: ディレクトリの存在チェック
+  stat: path={{ file_mountpoint }}
+  register: fm
+- name: openssl genrsa
+  shell: openssl genrsa -out {{ file_mountpoint }} 2048
+  when: not fm.stat.exists
+
+- name: edit /etc/kubernetes/config
+  lineinfile: >-
+    dest='/etc/kubernetes/config'
+    state=present
+    backrefs=yes
+    regexp='KUBE_MASTER='
+    line='KUBE_MASTER="--master=http://{{ master_node_ip }}:8080"'
+
+- name: edit /etc/kubernetes/kubelet
+  lineinfile: >-
+    dest='/etc/kubernetes/kubelet'
+    state=present
+    backrefs=yes
+    regexp='{{ item.regexp }}'
+    line='{{ item.line }}'
+  with_items:
+    - regexp: 'KUBELET_HOSTNAME='
+      line: 'KUBELET_HOSTNAME="--hostname-override={{ master_node_name }}"'
+    - regexp: 'KUBELET_API_SERVER='
+      line: 'KUBELET_API_SERVER="--api-servers=http://{{ master_node_ip }}:8080"'
+
+- name: edit /etc/kubernetes/apiserver
+  lineinfile: >-
+    dest='/etc/kubernetes/apiserver'
+    state=present
+    backrefs=yes
+    regexp='{{ item.regexp }}'
+    line='{{ item.line }}'
+  with_items:
+    - regexp: 'KUBE_API_ADDRESS='
+      line: 'KUBE_API_ADDRESS="--insecure-bind-address={{ master_node_ip }}"'
+    - regexp: 'KUBE_ETCD_SERVERS='
+      line: 'KUBE_ETCD_SERVERS="--etcd-servers=http://{{ master_node_ip }}:2379"'
+    - regexp: 'KUBE_API_ARGS='
+      line: 'KUBE_API_ARGS="--service_account_key_file=/etc/kubernetes/serviceaccount.key"'
+
+- name: edit /etc/kubernetes/controller-manager
+  lineinfile: >-
+    dest='/etc/kubernetes/controller-manager'
+    state=present
+    backrefs=yes
+    regexp='{{ item.regexp }}'
+    line='{{ item.line }}'
+  with_items:
+    - regexp: 'KUBE_CONTROLLER_MANAGER_ARGS='
+      line: 'KUBE_CONTROLLER_MANAGER_ARGS="--service_account_private_key_file=/etc/kubernetes/serviceaccount.key"'
+
+- name: edit /etc/etcd/etcd.conf
+  lineinfile: >-
+    dest='/etc/etcd/etcd.conf'
+    state=present
+    backrefs=yes
+    regexp='{{ item.regexp }}'
+    line='{{ item.line }}'
+  with_items:
+    - regexp: 'ETCD_LISTEN_CLIENT_URLS='
+      line: 'ETCD_LISTEN_CLIENT_URLS="http://0.0.0.0:2379"'
+    - regexp: 'ETCD_ADVERTISE_CLIENT_URLS='
+      line: 'ETCD_ADVERTISE_CLIENT_URLS="http://0.0.0.0:2379"'
+
+- name: edit /etc/sysconfig/docker
+  lineinfile: >-
+    dest='/etc/sysconfig/docker'
+    state=present
+    backrefs=yes
+    regexp='{{ item.regexp }}'
+    line='{{ item.line }}'
+  with_items:
+    - regexp: 'ADD_REGISTRY='
+      line: 'ADD_REGISTRY="--add-registry {{ master_node_ip }}:5000"'
+    - regexp: 'INSECURE_REGISTRY='
+      line: 'INSECURE_REGISTRY="--insecure-registry {{ master_node_ip }}:5000"'
+
+- name: restart etcd
+  service: name=etcd state=restarted
+
+- name: check{{ etcd_config }} 
+  shell: etcdctl ls {{ etcd_config }}
+  ignore_errors: true
+  register: ec
+- name: openssl genrsa
+  shell: etcdctl mk {{ etcd_config }} '{"Network":"172.17.0.0/16"}'
+  when: ec.rc != 0
+
+- name: restart service
+  service: name={{ item }} state=restarted enabled=yes
+  with_items:
+    - kube-apiserver
+    - kube-controller-manager
+    - kubelet
+    - flanneld
+    - etcd
+    - docker
+    - kube-scheduler
+    - kube-proxy
+
+- name:
+  shell: "{{ item }}"
+  with_items:
+    - kubectl config set-credentials myself --username={{ kubectl_admin_name }} --password={{ kubectl_admin_pass }}
+    - kubectl config set-cluster local-server --server=http://{{ master_node_name }}:8080
+    - kubectl config set-context default-context --cluster=local-server --user=myself
+    - kubectl config use-context default-context
+    - kubectl config set contexts.default-context.namespace default
+
+- name: make gitlab data dir
+  file: path={{item}} state=directory 
+  with_items:
+    - /kubernetes_dashboard
+
+- name:
+  template: src="kubernetes-dashboard-no-rbac.yaml" dest="/kubernetes_dashboard/kubernetes-dashboard-no-rbac.yaml"
