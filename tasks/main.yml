@@ -14,7 +14,7 @@
   shell: openssl genrsa -out {{ file_mountpoint }} 2048
   when: not fm.stat.exists
 
-- name: edit /etc/kubernetes/config
+- name: /etc/kubernetes/config の編集
   lineinfile: >-
     dest='/etc/kubernetes/config'
     state=present
@@ -22,7 +22,7 @@
     regexp='KUBE_MASTER='
     line='KUBE_MASTER="--master=http://{{ master_node_ip }}:8080"'
 
-- name: edit /etc/kubernetes/kubelet
+- name: /etc/kubernetes/kubelet の編集
   lineinfile: >-
     dest='/etc/kubernetes/kubelet'
     state=present
@@ -35,7 +35,7 @@
     - regexp: 'KUBELET_API_SERVER='
       line: 'KUBELET_API_SERVER="--api-servers=http://{{ master_node_ip }}:8080"'
 
-- name: edit /etc/kubernetes/apiserver
+- name: /etc/kubernetes/apiserver の編集
   lineinfile: >-
     dest='/etc/kubernetes/apiserver'
     state=present
@@ -50,7 +50,7 @@
     - regexp: 'KUBE_API_ARGS='
       line: 'KUBE_API_ARGS="--service_account_key_file=/etc/kubernetes/serviceaccount.key"'
 
-- name: edit /etc/kubernetes/controller-manager
+- name: /etc/kubernetes/controller-manager の編集
   lineinfile: >-
     dest='/etc/kubernetes/controller-manager'
     state=present
@@ -61,7 +61,7 @@
     - regexp: 'KUBE_CONTROLLER_MANAGER_ARGS='
       line: 'KUBE_CONTROLLER_MANAGER_ARGS="--service_account_private_key_file=/etc/kubernetes/serviceaccount.key"'
 
-- name: edit /etc/etcd/etcd.conf
+- name:  /etc/etcd/etcd.conf の編集
   lineinfile: >-
     dest='/etc/etcd/etcd.conf'
     state=present
@@ -74,7 +74,7 @@
     - regexp: 'ETCD_ADVERTISE_CLIENT_URLS='
       line: 'ETCD_ADVERTISE_CLIENT_URLS="http://0.0.0.0:2379"'
 
-- name: edit /etc/sysconfig/docker
+- name:  /etc/sysconfig/docker の編集
   lineinfile: >-
     dest='/etc/sysconfig/docker'
     state=present
@@ -94,6 +94,7 @@
   shell: etcdctl ls {{ etcd_config }}
   ignore_errors: true
   register: ec
+
 - name: openssl genrsa
   shell: etcdctl mk {{ etcd_config }} '{"Network":"172.17.0.0/16"}'
   when: ec.rc != 0
@@ -119,7 +120,7 @@
     - kubectl config use-context default-context
     - kubectl config set contexts.default-context.namespace default
 
-- name: make gitlab data dir
+- name: make dashboard dir
   file: path={{item}} state=directory 
   with_items:
     - /kubernetes_dashboard
